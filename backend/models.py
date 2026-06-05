@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, Numeric, Text
+from sqlalchemy import Column, Integer, String, Date, Numeric, Text, Boolean
 from database import Base
 
 class Transaction(Base):
