@@ -109,6 +109,30 @@ export async function updateBudget(month: number, year: number, amount: number):
   return res.json();
 }
 
+export interface CategoryBudget {
+  id: number;
+  category: string;
+  month: number;
+  year: number;
+  amount: number;
+}
+
+export async function fetchCategoryBudgets(month: number, year: number): Promise<CategoryBudget[]> {
+  const res = await fetch(`${API_URL}/category-budgets/?month=${month}&year=${year}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error('Failed to fetch category budgets');
+  return res.json();
+}
+
+export async function updateCategoryBudget(category: string, month: number, year: number, amount: number): Promise<CategoryBudget> {
+  const res = await fetch(`${API_URL}/category-budgets/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ category, month, year, amount }),
+  });
+  if (!res.ok) throw new Error('Failed to update category budget');
+  return res.json();
+}
+
 export interface RecurringTransaction {
   id: number;
   type: 'income' | 'expense';

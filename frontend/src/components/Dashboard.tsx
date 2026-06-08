@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { fetchSummary, fetchTransactions, deleteTransaction, updateTransactionStatus, fetchBudget, updateBudget, undoDeleteTransaction, createTransaction, Transaction, MonthlySummary, Budget, TransactionCreate } from '@/lib/api';
+import { fetchSummary, fetchTransactions, deleteTransaction, updateTransactionStatus, fetchBudget, updateBudget, undoDeleteTransaction, createTransaction, Transaction, MonthlySummary, Budget, TransactionCreate, CategoryBudget, fetchCategoryBudgets, updateCategoryBudget } from '@/lib/api';
 import TransactionForm from './TransactionForm';
 import Recurring from './Recurring';
 import Analytics from './Analytics';
@@ -26,6 +26,9 @@ export default function Dashboard() {
   const [budget, setBudget] = useState<Budget | null>(null);
   const [isEditingBudget, setIsEditingBudget] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
+  const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudget[]>([]);
+  const [editingCatBudget, setEditingCatBudget] = useState<string | null>(null);
+  const [catBudgetInput, setCatBudgetInput] = useState('');
   const [view, setView] = useState<'dashboard' | 'recurring' | 'analytics'>('dashboard');
   const [darkMode, setDarkMode] = useState(false);
   const [toast, setToast] = useState<{ message: string; undoId?: number } | null>(null);
@@ -37,7 +40,7 @@ export default function Dashboard() {
     return transactions.filter(t => {
       const matchesType = filter === 'all' || t.type === filter;
       const matchesSearch = t.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            (t.description && t.description.toLowerCase().includes(searchQuery.toLowerCase()));
+        (t.description && t.description.toLowerCase().includes(searchQuery.toLowerCase()));
       return matchesType && matchesSearch;
     });
   }, [transactions, filter, searchQuery]);
@@ -54,17 +57,35 @@ export default function Dashboard() {
     })).sort((a, b) => b.value - a.value);
   }, [transactions]);
 
+  const categoryExpenses = useMemo(() => {
+    const expenses = transactions.filter(t => t.type === 'expense' && t.status === 'done');
+    const grouped = expenses.reduce((acc, tx) => {
+      acc[tx.category] = (acc[tx.category] || 0) + Number(tx.amount);
+      return acc;
+    }, {} as Record<string, number>);
+    return grouped;
+  }, [transactions]);
+
+  const uniqueCategories = useMemo(() => {
+    const cats = new Set<string>();
+    Object.keys(categoryExpenses).forEach(c => cats.add(c));
+    categoryBudgets.forEach(cb => cats.add(cb.category));
+    return Array.from(cats).sort();
+  }, [categoryExpenses, categoryBudgets]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [sumData, txData, budgetData] = await Promise.all([
+      const [sumData, txData, budgetData, catBudgetsData] = await Promise.all([
         fetchSummary(month, year),
         fetchTransactions(month, year),
         fetchBudget(month, year).catch(() => null),
+        fetchCategoryBudgets(month, year).catch(() => []),
       ]);
       setSummary(sumData);
       setTransactions(txData);
       setBudget(budgetData);
+      setCategoryBudgets(catBudgetsData);
     } catch (err) {
       console.error(err);
     }
@@ -161,11 +182,10 @@ export default function Dashboard() {
                 <button
                   key={v}
                   onClick={() => setView(v)}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all capitalize ${
-                    view === v
-                      ? darkMode ? 'bg-gray-600 text-gray-100 shadow-sm' : 'bg-white text-gray-800 shadow-sm'
-                      : darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-500 hover:text-gray-700'
-                  }`}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all capitalize ${view === v
+                    ? darkMode ? 'bg-gray-600 text-gray-100 shadow-sm' : 'bg-white text-gray-800 shadow-sm'
+                    : darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-500 hover:text-gray-700'
+                    }`}
                 >
                   {v.charAt(0).toUpperCase() + v.slice(1)}
                 </button>
@@ -231,6 +251,9 @@ export default function Dashboard() {
               onAdd={() => { loadData(); setEditingTx(null); }}
               editTx={editingTx}
               onCancelEdit={handleCancelEdit}
+              categories={uniqueCategories}
+              month={month}
+              year={year}
             />
           </div>
 
@@ -318,6 +341,105 @@ export default function Dashboard() {
               )}
             </div>
 
+            {/* Category Budgets List */}
+            <div className={`p-6 rounded-2xl shadow-sm border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+              <h3 className={`text-sm font-medium uppercase tracking-wider mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Category Budgets</h3>
+              {uniqueCategories.length === 0 ? (
+                <p className="text-sm text-gray-400">No category expenses or budgets yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {uniqueCategories.map(cat => {
+                    const spent = categoryExpenses[cat] || 0;
+                    const catBudgetObj = categoryBudgets.find(cb => cb.category === cat);
+                    const catBudgetAmt = catBudgetObj?.amount || 0;
+                    const isExceeded = catBudgetAmt > 0 && spent > catBudgetAmt;
+                    const percentage = catBudgetAmt > 0 ? Math.min(100, Math.round((spent / catBudgetAmt) * 100)) : 0;
+                    const catTransactions = transactions.filter(t => t.category === cat && t.type === 'expense');
+                    
+                    return (
+                      <div key={cat} className="space-y-1.5">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{cat}</span>
+                          
+                          {editingCatBudget === cat ? (
+                            <form
+                              className="flex items-center gap-2"
+                              onSubmit={async (e) => {
+                                e.preventDefault();
+                                try {
+                                  await updateCategoryBudget(cat, month, year, parseFloat(catBudgetInput));
+                                  const updatedBudgets = await fetchCategoryBudgets(month, year);
+                                  setCategoryBudgets(updatedBudgets);
+                                  setEditingCatBudget(null);
+                                } catch {
+                                  alert('Failed to update category budget');
+                                }
+                              }}
+                            >
+                              <input
+                                type="number"
+                                step="0.01"
+                                required
+                                min="0.01"
+                                value={catBudgetInput}
+                                onChange={(e) => setCatBudgetInput(e.target.value)}
+                                className={`w-20 px-2 py-0.5 text-xs border rounded-md outline-none focus:border-blue-500 ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-200 text-gray-800'}`}
+                                autoFocus
+                              />
+                              <button type="submit" className="text-[10px] bg-indigo-600 text-white px-1.5 py-1 rounded hover:bg-indigo-700">Save</button>
+                              <button type="button" onClick={() => setEditingCatBudget(null)} className="text-[10px] text-gray-500 hover:text-gray-700">Cancel</button>
+                            </form>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className={isExceeded ? 'text-red-500 font-medium' : darkMode ? 'text-gray-300' : 'text-gray-600'}>
+                                ৳{spent} <span className="text-gray-400 font-normal">/ {catBudgetAmt > 0 ? `৳${catBudgetAmt}` : 'Not set'}</span>
+                              </span>
+                              {isExceeded && <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">Exceeded</span>}
+                              <button
+                                onClick={() => { setCatBudgetInput(catBudgetAmt > 0 ? catBudgetAmt.toString() : ''); setEditingCatBudget(cat); }}
+                                className="text-gray-400 hover:text-indigo-600 p-0.5 transition-colors"
+                                title="Edit category budget"
+                              >
+                                ✎
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {catBudgetAmt > 0 && !editingCatBudget && (
+                          <div className={`w-full rounded-full h-1.5 overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                            <div
+                              className={`h-1.5 rounded-full transition-all duration-500 ${isExceeded ? 'bg-red-500' : 'bg-indigo-500'}`}
+                              style={{ width: `${percentage}%` }}
+                            />
+                          </div>
+                        )}
+                        {/* List of transactions for this category */}
+                        {catTransactions.length > 0 && (
+                          <div className="pt-2 pl-3 space-y-2 border-l-2 border-gray-100 dark:border-gray-700 ml-1 mt-2">
+                            {catTransactions.map(tx => (
+                              <div key={tx.id} className="flex justify-between items-center text-xs">
+                                <div className="flex flex-col">
+                                  <span className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{tx.description || 'No description'}</span>
+                                  <span className="text-[10px] text-gray-400">{tx.date} {tx.status === 'pending' ? <span className="text-amber-500 ml-1">(Pending)</span> : ''}</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>৳{Number(tx.amount).toFixed(2)}</span>
+                                  <div className="flex items-center gap-1 opacity-50 hover:opacity-100 transition-opacity">
+                                    <button onClick={() => handleEdit(tx)} className="text-gray-400 hover:text-blue-500" title="Edit">✎</button>
+                                    <button onClick={() => handleDelete(tx.id)} className="text-gray-400 hover:text-red-500" title="Delete">✕</button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             {/* Transactions List */}
             <div className={`rounded-2xl shadow-sm border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
               <div className={`px-6 py-5 border-b flex justify-between items-center ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-50 bg-gray-50/50'}`}>
@@ -338,11 +460,10 @@ export default function Dashboard() {
                       <button
                         key={f}
                         onClick={() => setFilter(f)}
-                        className={`px-3 py-1 text-sm font-medium rounded-md transition-all capitalize ${
-                          filter === f
-                            ? darkMode ? 'bg-gray-600 text-gray-100 shadow-sm' : 'bg-white text-gray-800 shadow-sm'
-                            : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
-                        }`}
+                        className={`px-3 py-1 text-sm font-medium rounded-md transition-all capitalize ${filter === f
+                          ? darkMode ? 'bg-gray-600 text-gray-100 shadow-sm' : 'bg-white text-gray-800 shadow-sm'
+                          : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
+                          }`}
                       >
                         {f.charAt(0).toUpperCase() + f.slice(1)}
                       </button>
@@ -356,61 +477,72 @@ export default function Dashboard() {
               ) : filteredTransactions.length === 0 ? (
                 <div className="p-8 text-center text-gray-400">No transactions found.</div>
               ) : (
-                <ul className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-50'}`}>
-                  {filteredTransactions.map(tx => (
-                    <li
-                      key={tx.id}
-                      className={`p-6 flex items-center justify-between transition-colors ${
-                        tx.type === 'expense' && tx.status === 'pending' ? 'opacity-60' : ''
-                      } ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50/50'}`}
-                    >
-                      <div className="flex items-center space-x-4">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm ${tx.type === 'income' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
-                          {tx.type === 'income' ? '+' : '-'}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className={`font-medium ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{tx.category}</p>
-                            {tx.type === 'expense' && (
-                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${tx.status === 'done' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                                {tx.status === 'done' ? 'Paid' : 'Pending'}
-                              </span>
-                            )}
-                          </div>
-                          <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                            {tx.description || 'No description'} • {tx.date}
-                            {tx.tags && (
-                              <span className="ml-2 text-xs text-indigo-400">
-                                {tx.tags.split(',').map(tag => `#${tag.trim()}`).join(' ')}
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-3">
-                        <span className={`font-semibold ${tx.type === 'income' ? 'text-green-600' : darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
-                          ৳{Number(tx.amount).toFixed(2)}
-                        </span>
-                        {tx.type === 'expense' && (
-                          <button
-                            onClick={() => handleToggleStatus(tx)}
-                            className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-all ${
-                              tx.status === 'pending'
-                                ? 'bg-green-600 text-white hover:bg-green-700'
-                                : darkMode ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                            }`}
-                            title={tx.status === 'pending' ? 'Mark as paid' : 'Mark as pending'}
+                <div className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-50'}`}>
+                  {Object.entries(
+                    filteredTransactions.reduce((acc, tx) => {
+                      if (!acc[tx.category]) acc[tx.category] = [];
+                      acc[tx.category].push(tx);
+                      return acc;
+                    }, {} as Record<string, typeof filteredTransactions>)
+                  ).map(([cat, txs]) => (
+                    <div key={cat} className={`p-6 transition-colors ${darkMode ? 'bg-gray-800/50' : 'bg-white'}`}>
+                      <h3 className={`text-md font-semibold mb-4 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{cat}</h3>
+                      <ul className="space-y-4">
+                        {txs.map(tx => (
+                          <li
+                            key={tx.id}
+                            className={`flex items-center justify-between transition-colors ${tx.type === 'expense' && tx.status === 'pending' ? 'opacity-60' : ''
+                              } ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50/50'} p-2 rounded-lg -mx-2`}
                           >
-                            {tx.status === 'pending' ? '✓ Mark Paid' : '↩ Undo'}
-                          </button>
-                        )}
-                        <button onClick={() => handleDuplicate(tx)} className="text-gray-500 hover:text-green-600 hover:bg-green-50 transition-all p-2 rounded-md" title="Duplicate">📋</button>
-                        <button onClick={() => handleEdit(tx)} className="text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-all p-2 rounded-md" title="Edit">✎</button>
-                        <button onClick={() => handleDelete(tx.id)} className="text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all p-2 rounded-md" title="Delete">✕</button>
-                      </div>
-                    </li>
+                            <div className="flex items-center space-x-4">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm ${tx.type === 'income' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
+                                {tx.type === 'income' ? '+' : '-'}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p className={`font-medium ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{tx.category}</p>
+                                  {tx.type === 'expense' && (
+                                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${tx.status === 'done' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                      {tx.status === 'done' ? 'Paid' : 'Pending'}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                  {tx.description || 'No description'} • {tx.date}
+                                  {tx.tags && (
+                                    <span className="ml-2 text-xs text-indigo-400">
+                                      {tx.tags.split(',').map(tag => `#${tag.trim()}`).join(' ')}
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                              <span className={`font-semibold ${tx.type === 'income' ? 'text-green-600' : darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
+                                ৳{Number(tx.amount).toFixed(2)}
+                              </span>
+                              {tx.type === 'expense' && (
+                                <button
+                                  onClick={() => handleToggleStatus(tx)}
+                                  className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-all ${tx.status === 'pending'
+                                    ? 'bg-green-600 text-white hover:bg-green-700'
+                                    : darkMode ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                                    }`}
+                                  title={tx.status === 'pending' ? 'Mark as paid' : 'Mark as pending'}
+                                >
+                                  {tx.status === 'pending' ? '✓ Mark Paid' : '↩ Undo'}
+                                </button>
+                              )}
+                              <button onClick={() => handleDuplicate(tx)} className="text-gray-500 hover:text-green-600 hover:bg-green-50 transition-all p-2 rounded-md" title="Duplicate">📋</button>
+                              <button onClick={() => handleEdit(tx)} className="text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-all p-2 rounded-md" title="Edit">✎</button>
+                              <button onClick={() => handleDelete(tx.id)} className="text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all p-2 rounded-md" title="Delete">✕</button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ))}
-                </ul>
+                </div>
               )}
             </div>
 

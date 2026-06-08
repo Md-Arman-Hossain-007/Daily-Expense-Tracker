@@ -1,15 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { createTransaction, updateTransaction, TransactionCreate, Transaction } from '@/lib/api';
+import { createTransaction, updateTransaction, TransactionCreate, Transaction, updateCategoryBudget } from '@/lib/api';
 
 interface Props {
   onAdd: () => void;
   editTx?: Transaction | null;
   onCancelEdit?: () => void;
+  categories?: string[];
+  month?: number;
+  year?: number;
 }
 
-export default function TransactionForm({ onAdd, editTx, onCancelEdit }: Props) {
+export default function TransactionForm({ onAdd, editTx, onCancelEdit, categories = [], month, year }: Props) {
   // By using editTx?.id as a `key` in the parent, React will remount this component
   // whenever a different transaction is selected for editing — no useEffect needed.
   const [type, setType] = useState<'income' | 'expense'>(editTx?.type || 'expense');
@@ -18,6 +21,7 @@ export default function TransactionForm({ onAdd, editTx, onCancelEdit }: Props) 
   const [description, setDescription] = useState(editTx?.description || '');
   const [tags, setTags] = useState(editTx?.tags || '');
   const [date, setDate] = useState(editTx?.date || new Date().toISOString().split('T')[0]);
+  const [categoryBudget, setCategoryBudget] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -36,10 +40,14 @@ export default function TransactionForm({ onAdd, editTx, onCancelEdit }: Props) 
         await updateTransaction(editTx.id, data);
       } else {
         await createTransaction(data);
+        if (type === 'expense' && categoryBudget && month && year) {
+          await updateCategoryBudget(category, month, year, parseFloat(categoryBudget));
+        }
         setAmount('');
         setCategory('');
         setDescription('');
         setTags('');
+        setCategoryBudget('');
       }
       onAdd();
     } catch (err) {
@@ -78,6 +86,44 @@ export default function TransactionForm({ onAdd, editTx, onCancelEdit }: Props) 
         </div>
 
         <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+          <input
+            type="text"
+            required
+            list="category-options"
+            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            placeholder={type === 'income' ? 'e.g. Salary, Bonus' : 'e.g. Groceries, Rent'}
+            autoComplete="off"
+          />
+          <datalist id="category-options">
+            {categories.map(cat => <option key={cat} value={cat} />)}
+          </datalist>
+        </div>
+
+        {type === 'expense' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Category Budget <span className="text-gray-400 font-normal">(Optional)</span>
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">৳</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                value={categoryBudget}
+                onChange={(e) => setCategoryBudget(e.target.value)}
+                placeholder="Set budget for this category"
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-1">If you set this, it will update the budget limit for this category.</p>
+          </div>
+        )}
+
+        <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">৳</span>
@@ -92,18 +138,6 @@ export default function TransactionForm({ onAdd, editTx, onCancelEdit }: Props) 
               placeholder="0.00"
             />
           </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-          <input
-            type="text"
-            required
-            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder={type === 'income' ? 'e.g. Salary, Bonus' : 'e.g. Groceries, Rent'}
-          />
         </div>
 
         <div>
