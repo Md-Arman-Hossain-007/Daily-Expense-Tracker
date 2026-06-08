@@ -518,7 +518,11 @@ export default function Dashboard() {
                               <span className={isExceeded ? 'text-red-500 font-medium' : darkMode ? 'text-gray-300' : 'text-gray-600'}>
                                 ৳{spent} <span className="text-gray-400 font-normal">/ {catBudgetAmt > 0 ? `৳${catBudgetAmt}` : 'Not set'}</span>
                               </span>
-                              {isExceeded && <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">Exceeded</span>}
+                              {catBudgetAmt > 0 && (
+                                <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium whitespace-nowrap tracking-wide shadow-sm ${isExceeded ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}>
+                                  {isExceeded ? `Exceeded by ৳${Number(spent - catBudgetAmt).toFixed(2)}` : `৳${Number(catBudgetAmt - spent).toFixed(2)} left`}
+                                </span>
+                              )}
                               <button
                                 onClick={() => { setCatBudgetInput(catBudgetAmt > 0 ? catBudgetAmt.toString() : ''); setEditingCatBudget(cat); }}
                                 className="text-gray-400 hover:text-indigo-600 p-0.5 transition-colors"
