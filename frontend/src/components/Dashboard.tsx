@@ -257,10 +257,10 @@ export default function Dashboard() {
 
       {/* Dashboard View */}
       {view === 'dashboard' && (
-        <main className="max-w-[96rem] mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <main className="max-w-[96rem] mx-auto px-6 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-76px)] overflow-hidden">
 
           {/* Left Column: Form */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-3 h-full overflow-y-auto pb-8 pr-2">
             <TransactionForm
               key={editingTx?.id ?? 'new'}
               onAdd={() => { loadData(); setEditingTx(null); }}
@@ -273,7 +273,7 @@ export default function Dashboard() {
           </div>
 
           {/* Middle Column: Summary + Budget + Transactions */}
-          <div className="lg:col-span-5 space-y-6">
+          <div className="lg:col-span-5 space-y-6 h-full overflow-y-auto pb-8 pr-2">
 
             {/* Summary Cards */}
             <div className="grid grid-cols-3 gap-3">
@@ -465,8 +465,8 @@ export default function Dashboard() {
           </div>
 
           {/* Right Column: Category Budgets */}
-          <div className="lg:col-span-4">
-            <div className={`p-5 rounded-2xl shadow-sm border sticky top-6 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+          <div className="lg:col-span-4 h-full overflow-y-auto pb-8 pr-2">
+            <div className={`p-5 rounded-2xl shadow-sm border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
               <h3 className={`text-sm font-medium uppercase tracking-wider mb-5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Category Budgets</h3>
               {uniqueCategories.length === 0 ? (
                 <p className="text-sm text-gray-400">No category expenses or budgets yet.</p>
