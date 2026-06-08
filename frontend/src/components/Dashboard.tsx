@@ -5,7 +5,7 @@ import { fetchSummary, fetchTransactions, deleteTransaction, updateTransactionSt
 import TransactionForm from './TransactionForm';
 import Recurring from './Recurring';
 import Analytics from './Analytics';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, ReferenceLine } from 'recharts';
 
 const COLORS = [
   '#4F46E5', '#06B6D4', '#10B981', '#F59E0B', '#EF4444',
@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showChart, setShowChart] = useState(false);
+  const [chartTab, setChartTab] = useState<'overview' | 'budget' | 'breakdown'>('budget');
   const [budget, setBudget] = useState<Budget | null>(null);
   const [isEditingBudget, setIsEditingBudget] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
@@ -72,6 +73,20 @@ export default function Dashboard() {
     categoryBudgets.forEach(cb => cats.add(cb.category));
     return Array.from(cats).sort();
   }, [categoryExpenses, categoryBudgets]);
+
+  const overviewData = useMemo(() => [
+    { name: 'Income', value: Number(summary?.total_income || 0), fill: '#10B981' },
+    { name: 'Expenses', value: Number(summary?.total_expense || 0), fill: '#EF4444' },
+    { name: 'Balance', value: Math.max(0, Number(summary?.balance || 0)), fill: '#6366F1' },
+  ], [summary]);
+
+  const budgetChartData = useMemo(() => uniqueCategories.map(cat => {
+    const spent = categoryExpenses[cat] || 0;
+    const catBudgetObj = categoryBudgets.find(cb => cb.category === cat);
+    const budget = catBudgetObj?.amount || 0;
+    const exceeded = budget > 0 && spent > budget;
+    return { name: cat, Spent: spent, Budget: budget > 0 ? budget : null, exceeded };
+  }), [uniqueCategories, categoryExpenses, categoryBudgets]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -242,10 +257,10 @@ export default function Dashboard() {
 
       {/* Dashboard View */}
       {view === 'dashboard' && (
-        <main className="max-w-5xl mx-auto px-4 py-8 grid grid-cols-1 md:grid-cols-3 gap-8">
+        <main className="max-w-[96rem] mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
 
           {/* Left Column: Form */}
-          <div className="md:col-span-1">
+          <div className="lg:col-span-3">
             <TransactionForm
               key={editingTx?.id ?? 'new'}
               onAdd={() => { loadData(); setEditingTx(null); }}
@@ -257,11 +272,11 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* Right Column */}
-          <div className="md:col-span-2 space-y-8">
+          {/* Middle Column: Summary + Budget + Transactions */}
+          <div className="lg:col-span-5 space-y-6">
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-3">
               {[
                 { label: 'Income', value: summary?.total_income || '0.00', color: 'text-green-600' },
                 { label: 'Expenses', value: summary?.total_expense || '0.00', color: 'text-red-500' },
@@ -269,16 +284,16 @@ export default function Dashboard() {
               ].map(card => (
                 <div
                   key={card.label}
-                  className={`p-6 rounded-2xl shadow-sm border flex flex-col justify-center items-center ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}
+                  className={`p-5 rounded-2xl shadow-sm border flex flex-col justify-center items-center ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}
                 >
-                  <span className={`text-sm font-medium uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{card.label}</span>
-                  <span className={`text-2xl font-semibold mt-2 ${card.color}`}>৳{card.value}</span>
+                  <span className={`text-xs font-medium uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{card.label}</span>
+                  <span className={`text-xl font-semibold mt-1.5 ${card.color}`}>৳{card.value}</span>
                 </div>
               ))}
             </div>
 
             {/* Budget Progress Bar */}
-            <div className={`p-6 rounded-2xl shadow-sm border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+            <div className={`p-5 rounded-2xl shadow-sm border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
               <div className="flex justify-between items-end mb-2">
                 <div>
                   <h3 className={`text-sm font-medium uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Monthly Budget</h3>
@@ -341,13 +356,122 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Category Budgets List */}
-            <div className={`p-6 rounded-2xl shadow-sm border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
-              <h3 className={`text-sm font-medium uppercase tracking-wider mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Category Budgets</h3>
+            {/* Transactions List */}
+            <div className={`rounded-2xl shadow-sm border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+              <div className={`px-5 py-4 border-b flex justify-between items-center ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-50 bg-gray-50/50'}`}>
+                <h2 className={`text-lg font-medium ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>Recent Transactions</h2>
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+                    <input
+                      type="text"
+                      placeholder="Search..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className={`pl-9 pr-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none w-36 ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-200 text-gray-800'}`}
+                    />
+                  </div>
+                  <div className={`flex p-1 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-200/50'}`}>
+                    {(['all', 'income', 'expense'] as const).map(f => (
+                      <button
+                        key={f}
+                        onClick={() => setFilter(f)}
+                        className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all capitalize ${filter === f
+                          ? darkMode ? 'bg-gray-600 text-gray-100 shadow-sm' : 'bg-white text-gray-800 shadow-sm'
+                          : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
+                          }`}
+                      >
+                        {f.charAt(0).toUpperCase() + f.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {loading ? (
+                <div className="p-8 text-center text-gray-400">Loading...</div>
+              ) : filteredTransactions.length === 0 ? (
+                <div className="p-8 text-center text-gray-400">No transactions found.</div>
+              ) : (
+                <div className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-50'}`}>
+                  {Object.entries(
+                    filteredTransactions.reduce((acc, tx) => {
+                      if (!acc[tx.category]) acc[tx.category] = [];
+                      acc[tx.category].push(tx);
+                      return acc;
+                    }, {} as Record<string, typeof filteredTransactions>)
+                  ).map(([cat, txs]) => (
+                    <div key={cat} className={`p-5 transition-colors ${darkMode ? 'bg-gray-800/50' : 'bg-white'}`}>
+                      <h3 className={`text-md font-semibold mb-3 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{cat}</h3>
+                      <ul className="space-y-3">
+                        {txs.map(tx => (
+                          <li
+                            key={tx.id}
+                            className={`flex items-center justify-between transition-colors ${tx.type === 'expense' && tx.status === 'pending' ? 'opacity-60' : ''
+                              } ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50/50'} p-2 rounded-lg -mx-2`}
+                          >
+                            <div className="flex items-center space-x-3">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-lg shadow-sm ${tx.type === 'income' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
+                                {tx.type === 'income' ? '+' : '-'}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p className={`text-sm font-medium ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{tx.category}</p>
+                                  {tx.type === 'expense' && (
+                                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${tx.status === 'done' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                      {tx.status === 'done' ? 'Paid' : 'Pending'}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                  {tx.description || 'No description'} • {tx.date}
+                                  {tx.tags && (
+                                    <span className="ml-1 text-[10px] text-indigo-400">
+                                      {tx.tags.split(',').map(tag => `#${tag.trim()}`).join(' ')}
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <span className={`text-sm font-semibold ${tx.type === 'income' ? 'text-green-600' : darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
+                                ৳{Number(tx.amount).toFixed(2)}
+                              </span>
+                              {tx.type === 'expense' && (
+                                <button
+                                  onClick={() => handleToggleStatus(tx)}
+                                  className={`text-[10px] font-medium px-2 py-1 rounded-md transition-all ${tx.status === 'pending'
+                                    ? 'bg-green-600 text-white hover:bg-green-700'
+                                    : darkMode ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                                    }`}
+                                  title={tx.status === 'pending' ? 'Mark as paid' : 'Mark as pending'}
+                                >
+                                  {tx.status === 'pending' ? '✓ Paid' : '↩'}
+                                </button>
+                              )}
+                              <button onClick={() => handleDuplicate(tx)} className="text-gray-400 hover:text-green-600 transition-all p-1 rounded" title="Duplicate">📋</button>
+                              <button onClick={() => handleEdit(tx)} className="text-gray-400 hover:text-blue-600 transition-all p-1 rounded" title="Edit">✎</button>
+                              <button onClick={() => handleDelete(tx.id)} className="text-gray-400 hover:text-red-600 transition-all p-1 rounded" title="Delete">✕</button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+          </div>
+
+          {/* Right Column: Category Budgets */}
+          <div className="lg:col-span-4">
+            <div className={`p-5 rounded-2xl shadow-sm border sticky top-6 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+              <h3 className={`text-sm font-medium uppercase tracking-wider mb-5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Category Budgets</h3>
               {uniqueCategories.length === 0 ? (
                 <p className="text-sm text-gray-400">No category expenses or budgets yet.</p>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   {uniqueCategories.map(cat => {
                     const spent = categoryExpenses[cat] || 0;
                     const catBudgetObj = categoryBudgets.find(cb => cb.category === cat);
@@ -355,12 +479,12 @@ export default function Dashboard() {
                     const isExceeded = catBudgetAmt > 0 && spent > catBudgetAmt;
                     const percentage = catBudgetAmt > 0 ? Math.min(100, Math.round((spent / catBudgetAmt) * 100)) : 0;
                     const catTransactions = transactions.filter(t => t.category === cat && t.type === 'expense');
-                    
+
                     return (
-                      <div key={cat} className="space-y-1.5">
+                      <div key={cat} className={`p-4 rounded-xl space-y-2 ${darkMode ? 'bg-gray-700/40' : 'bg-gray-50/80'}`}>
                         <div className="flex justify-between items-center text-sm">
-                          <span className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{cat}</span>
-                          
+                          <span className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{cat}</span>
+
                           {editingCatBudget === cat ? (
                             <form
                               className="flex items-center gap-2"
@@ -394,7 +518,7 @@ export default function Dashboard() {
                               <span className={isExceeded ? 'text-red-500 font-medium' : darkMode ? 'text-gray-300' : 'text-gray-600'}>
                                 ৳{spent} <span className="text-gray-400 font-normal">/ {catBudgetAmt > 0 ? `৳${catBudgetAmt}` : 'Not set'}</span>
                               </span>
-                              {isExceeded && <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">Exceeded</span>}
+                              {isExceeded && <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">Exceeded</span>}
                               <button
                                 onClick={() => { setCatBudgetInput(catBudgetAmt > 0 ? catBudgetAmt.toString() : ''); setEditingCatBudget(cat); }}
                                 className="text-gray-400 hover:text-indigo-600 p-0.5 transition-colors"
@@ -406,7 +530,7 @@ export default function Dashboard() {
                           )}
                         </div>
                         {catBudgetAmt > 0 && !editingCatBudget && (
-                          <div className={`w-full rounded-full h-1.5 overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                          <div className={`w-full rounded-full h-1.5 overflow-hidden ${darkMode ? 'bg-gray-600' : 'bg-gray-200'}`}>
                             <div
                               className={`h-1.5 rounded-full transition-all duration-500 ${isExceeded ? 'bg-red-500' : 'bg-indigo-500'}`}
                               style={{ width: `${percentage}%` }}
@@ -415,16 +539,16 @@ export default function Dashboard() {
                         )}
                         {/* List of transactions for this category */}
                         {catTransactions.length > 0 && (
-                          <div className="pt-2 pl-3 space-y-2 border-l-2 border-gray-100 dark:border-gray-700 ml-1 mt-2">
+                          <div className="pt-2 pl-3 space-y-2 border-l-2 border-gray-200 dark:border-gray-600 ml-1">
                             {catTransactions.map(tx => (
                               <div key={tx.id} className="flex justify-between items-center text-xs">
                                 <div className="flex flex-col">
                                   <span className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{tx.description || 'No description'}</span>
                                   <span className="text-[10px] text-gray-400">{tx.date} {tx.status === 'pending' ? <span className="text-amber-500 ml-1">(Pending)</span> : ''}</span>
                                 </div>
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
                                   <span className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>৳{Number(tx.amount).toFixed(2)}</span>
-                                  <div className="flex items-center gap-1 opacity-50 hover:opacity-100 transition-opacity">
+                                  <div className="flex items-center gap-1 opacity-40 hover:opacity-100 transition-opacity">
                                     <button onClick={() => handleEdit(tx)} className="text-gray-400 hover:text-blue-500" title="Edit">✎</button>
                                     <button onClick={() => handleDelete(tx.id)} className="text-gray-400 hover:text-red-500" title="Delete">✕</button>
                                   </div>
@@ -439,137 +563,177 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
-
-            {/* Transactions List */}
-            <div className={`rounded-2xl shadow-sm border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
-              <div className={`px-6 py-5 border-b flex justify-between items-center ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-50 bg-gray-50/50'}`}>
-                <h2 className={`text-lg font-medium ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>Recent Transactions</h2>
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
-                    <input
-                      type="text"
-                      placeholder="Search..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className={`pl-9 pr-4 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none w-48 ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-200 text-gray-800'}`}
-                    />
-                  </div>
-                  <div className={`flex p-1 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-200/50'}`}>
-                    {(['all', 'income', 'expense'] as const).map(f => (
-                      <button
-                        key={f}
-                        onClick={() => setFilter(f)}
-                        className={`px-3 py-1 text-sm font-medium rounded-md transition-all capitalize ${filter === f
-                          ? darkMode ? 'bg-gray-600 text-gray-100 shadow-sm' : 'bg-white text-gray-800 shadow-sm'
-                          : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
-                          }`}
-                      >
-                        {f.charAt(0).toUpperCase() + f.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {loading ? (
-                <div className="p-8 text-center text-gray-400">Loading...</div>
-              ) : filteredTransactions.length === 0 ? (
-                <div className="p-8 text-center text-gray-400">No transactions found.</div>
-              ) : (
-                <div className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-50'}`}>
-                  {Object.entries(
-                    filteredTransactions.reduce((acc, tx) => {
-                      if (!acc[tx.category]) acc[tx.category] = [];
-                      acc[tx.category].push(tx);
-                      return acc;
-                    }, {} as Record<string, typeof filteredTransactions>)
-                  ).map(([cat, txs]) => (
-                    <div key={cat} className={`p-6 transition-colors ${darkMode ? 'bg-gray-800/50' : 'bg-white'}`}>
-                      <h3 className={`text-md font-semibold mb-4 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{cat}</h3>
-                      <ul className="space-y-4">
-                        {txs.map(tx => (
-                          <li
-                            key={tx.id}
-                            className={`flex items-center justify-between transition-colors ${tx.type === 'expense' && tx.status === 'pending' ? 'opacity-60' : ''
-                              } ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50/50'} p-2 rounded-lg -mx-2`}
-                          >
-                            <div className="flex items-center space-x-4">
-                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm ${tx.type === 'income' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
-                                {tx.type === 'income' ? '+' : '-'}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <p className={`font-medium ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{tx.category}</p>
-                                  {tx.type === 'expense' && (
-                                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${tx.status === 'done' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                                      {tx.status === 'done' ? 'Paid' : 'Pending'}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                  {tx.description || 'No description'} • {tx.date}
-                                  {tx.tags && (
-                                    <span className="ml-2 text-xs text-indigo-400">
-                                      {tx.tags.split(',').map(tag => `#${tag.trim()}`).join(' ')}
-                                    </span>
-                                  )}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-3">
-                              <span className={`font-semibold ${tx.type === 'income' ? 'text-green-600' : darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
-                                ৳{Number(tx.amount).toFixed(2)}
-                              </span>
-                              {tx.type === 'expense' && (
-                                <button
-                                  onClick={() => handleToggleStatus(tx)}
-                                  className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-all ${tx.status === 'pending'
-                                    ? 'bg-green-600 text-white hover:bg-green-700'
-                                    : darkMode ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                                    }`}
-                                  title={tx.status === 'pending' ? 'Mark as paid' : 'Mark as pending'}
-                                >
-                                  {tx.status === 'pending' ? '✓ Mark Paid' : '↩ Undo'}
-                                </button>
-                              )}
-                              <button onClick={() => handleDuplicate(tx)} className="text-gray-500 hover:text-green-600 hover:bg-green-50 transition-all p-2 rounded-md" title="Duplicate">📋</button>
-                              <button onClick={() => handleEdit(tx)} className="text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-all p-2 rounded-md" title="Edit">✎</button>
-                              <button onClick={() => handleDelete(tx.id)} className="text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all p-2 rounded-md" title="Delete">✕</button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
           </div>
+
         </main>
       )}
 
       {/* Chart Modal */}
       {showChart && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowChart(false)}>
-          <div className={`rounded-2xl shadow-2xl p-8 w-full max-w-2xl mx-4 relative ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className={`text-xl font-semibold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>Expenses by Category</h2>
-              <button onClick={() => setShowChart(false)} className="text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center transition-colors text-lg">✕</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowChart(false)}>
+          <div className={`rounded-2xl shadow-2xl w-full max-w-3xl mx-4 relative flex flex-col ${darkMode ? 'bg-gray-800' : 'bg-white'}`} style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className={`flex justify-between items-center px-8 pt-7 pb-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+              <h2 className={`text-xl font-semibold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>Budget Analytics</h2>
+              <button onClick={() => setShowChart(false)} className="text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full w-8 h-8 flex items-center justify-center transition-colors text-lg">✕</button>
             </div>
-            <div className="h-[420px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={pieData} dataKey="value" nameKey="name" cx="40%" cy="45%" outerRadius={130} innerRadius={75} paddingAngle={2} animationBegin={0} animationDuration={600}>
-                    {pieData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value: number) => `৳${Number(value).toFixed(2)}`} />
-                  <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ right: 0, paddingLeft: '12px', fontSize: '13px' }} />
-                </PieChart>
-              </ResponsiveContainer>
+
+            {/* Tabs */}
+            <div className="flex gap-1 px-8 pt-4 pb-0">
+              {([['budget', '📊 Budget vs Actual'], ['overview', '💰 Financial Overview'], ['breakdown', '🥧 Expense Breakdown']] as const).map(([tab, label]) => (
+                <button
+                  key={tab}
+                  onClick={() => setChartTab(tab)}
+                  className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${chartTab === tab
+                    ? darkMode ? 'bg-gray-700 text-indigo-400 border-b-2 border-indigo-400' : 'bg-indigo-50 text-indigo-700 border-b-2 border-indigo-600'
+                    : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Chart Area */}
+            <div className="flex-1 overflow-auto px-8 py-6" style={{ minHeight: '420px' }}>
+
+              {/* Budget vs Actual Bar Chart */}
+              {chartTab === 'budget' && (
+                <div>
+                  <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Comparing what you <strong>spent</strong> vs your <strong>budget limit</strong> per category. <span className="text-red-500">Red</span> bars indicate exceeded budgets.
+                  </p>
+                  {budgetChartData.length === 0 ? (
+                    <div className="h-64 flex items-center justify-center text-gray-400">No expense data yet.</div>
+                  ) : (
+                    <div style={{ height: Math.max(320, budgetChartData.length * 60) }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={budgetChartData} layout="vertical" margin={{ top: 5, right: 60, left: 10, bottom: 5 }} barGap={4}>
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={darkMode ? '#374151' : '#f0f0f0'} />
+                          <XAxis
+                            type="number"
+                            tickFormatter={v => `৳${v}`}
+                            tick={{ fill: darkMode ? '#9CA3AF' : '#6b7280', fontSize: 11 }}
+                            axisLine={false} tickLine={false}
+                          />
+                          <YAxis
+                            type="category"
+                            dataKey="name"
+                            width={90}
+                            tick={{ fill: darkMode ? '#D1D5DB' : '#374151', fontSize: 12, fontWeight: 500 }}
+                            axisLine={false} tickLine={false}
+                          />
+                          <Tooltip
+                            formatter={(value: any, name: any) => [`৳${Number(value).toFixed(2)}`, name]}
+                            contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.12)', background: darkMode ? '#1F2937' : '#fff' }}
+                            labelStyle={{ color: darkMode ? '#F3F4F6' : '#111827', fontWeight: 600 }}
+                          />
+                          <Legend iconType="circle" wrapperStyle={{ paddingTop: '16px', fontSize: '12px' }} />
+                          <Bar dataKey="Budget" name="Budget" fill="#6366F1" opacity={0.35} radius={[0, 4, 4, 0]} maxBarSize={20} />
+                          <Bar dataKey="Spent" name="Spent" radius={[0, 4, 4, 0]} maxBarSize={20}>
+                            {budgetChartData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.exceeded ? '#EF4444' : '#10B981'} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                  <div className="flex gap-6 mt-4 flex-wrap">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="w-3 h-3 rounded-full bg-green-500 inline-block"></span>
+                      <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>Within budget</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="w-3 h-3 rounded-full bg-red-500 inline-block"></span>
+                      <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>Budget exceeded</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="w-3 h-3 rounded-full bg-indigo-400 opacity-50 inline-block"></span>
+                      <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>Budget limit</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Financial Overview */}
+              {chartTab === 'overview' && (
+                <div>
+                  <p className={`text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Your high-level financial summary for <strong>{date.toLocaleString('default', { month: 'long', year: 'numeric' })}</strong>.
+                  </p>
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={overviewData} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? '#374151' : '#f0f0f0'} />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: darkMode ? '#9CA3AF' : '#6b7280', fontSize: 13, fontWeight: 500 }} />
+                        <YAxis
+                          tickFormatter={v => `৳${v}`}
+                          tick={{ fill: darkMode ? '#9CA3AF' : '#6b7280', fontSize: 11 }}
+                          axisLine={false} tickLine={false}
+                        />
+                        <Tooltip
+                          formatter={(value: any) => [`৳${Number(value).toFixed(2)}`]}
+                          contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.12)', background: darkMode ? '#1F2937' : '#fff' }}
+                        />
+                        <Bar dataKey="value" name="Amount" radius={[6, 6, 0, 0]} maxBarSize={80}>
+                          {overviewData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className={`mt-6 grid grid-cols-3 gap-4 p-4 rounded-xl ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-400 uppercase tracking-wider">Income</p>
+                      <p className="text-lg font-bold text-green-500 mt-1">৳{Number(summary?.total_income || 0).toFixed(2)}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-400 uppercase tracking-wider">Expenses</p>
+                      <p className="text-lg font-bold text-red-500 mt-1">৳{Number(summary?.total_expense || 0).toFixed(2)}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-400 uppercase tracking-wider">Balance</p>
+                      <p className={`text-lg font-bold mt-1 ${(summary?.balance || 0) >= 0 ? 'text-indigo-500' : 'text-red-600'}`}>৳{Number(summary?.balance || 0).toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Expense Breakdown Pie */}
+              {chartTab === 'breakdown' && (
+                <div>
+                  <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Breakdown of your total expenses by category.
+                  </p>
+                  {pieData.length === 0 ? (
+                    <div className="h-64 flex items-center justify-center text-gray-400">No expense data yet.</div>
+                  ) : (
+                    <div className="h-[380px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={pieData}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="40%" cy="45%"
+                            outerRadius={130} innerRadius={75}
+                            paddingAngle={2}
+                            animationBegin={0} animationDuration={600}
+                          >
+                            {pieData.map((_, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value: any) => `৳${Number(value).toFixed(2)}`} contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.12)', background: darkMode ? '#1F2937' : '#fff' }} />
+                          <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ right: 0, paddingLeft: '12px', fontSize: '13px' }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
