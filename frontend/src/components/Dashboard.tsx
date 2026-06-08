@@ -269,6 +269,7 @@ export default function Dashboard() {
               categories={uniqueCategories}
               month={month}
               year={year}
+              darkMode={darkMode}
             />
           </div>
 
@@ -401,14 +402,13 @@ export default function Dashboard() {
                       return acc;
                     }, {} as Record<string, typeof filteredTransactions>)
                   ).map(([cat, txs]) => (
-                    <div key={cat} className={`p-5 transition-colors ${darkMode ? 'bg-gray-800/50' : 'bg-white'}`}>
+                    <div key={cat} className={`p-5 transition-colors ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                       <h3 className={`text-md font-semibold mb-3 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{cat}</h3>
                       <ul className="space-y-3">
                         {txs.map(tx => (
                           <li
                             key={tx.id}
-                            className={`flex items-center justify-between transition-colors ${tx.type === 'expense' && tx.status === 'pending' ? 'opacity-60' : ''
-                              } ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50/50'} p-2 rounded-lg -mx-2`}
+                            className={`flex items-center justify-between transition-colors ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50/50'} p-2 rounded-lg -mx-2`}
                           >
                             <div className="flex items-center space-x-3">
                               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-lg shadow-sm ${tx.type === 'income' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
