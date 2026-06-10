@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { fetchSummary, fetchTransactions, deleteTransaction, updateTransactionStatus, fetchBudget, updateBudget, undoDeleteTransaction, createTransaction, Transaction, MonthlySummary, Budget, TransactionCreate, CategoryBudget, fetchCategoryBudgets, updateCategoryBudget } from '@/lib/api';
+import { fetchSummary, fetchTransactions, deleteTransaction, updateTransactionStatus, fetchBudget, updateBudget, undoDeleteTransaction, createTransaction, Transaction, MonthlySummary, Budget, TransactionCreate, CategoryBudget, fetchCategoryBudgets, updateCategoryBudget, fetchRollover } from '@/lib/api';
 import TransactionForm from './TransactionForm';
 import Recurring from './Recurring';
 import Analytics from './Analytics';
+import DebtTracker from './DebtTracker';
+import SavingsGoals from './SavingsGoals';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, ReferenceLine } from 'recharts';
 
 const COLORS = [
@@ -14,7 +16,12 @@ const COLORS = [
   '#0EA5E9', '#D946EF', '#059669', '#FB923C', '#6366F1',
 ];
 
-export default function Dashboard() {
+interface DashboardProps {
+  token?: string;
+  onLogout?: () => void;
+}
+
+export default function Dashboard({ token, onLogout }: DashboardProps = {}) {
   const [date, setDate] = useState(new Date());
   const [summary, setSummary] = useState<MonthlySummary | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -30,7 +37,8 @@ export default function Dashboard() {
   const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudget[]>([]);
   const [editingCatBudget, setEditingCatBudget] = useState<string | null>(null);
   const [catBudgetInput, setCatBudgetInput] = useState('');
-  const [view, setView] = useState<'dashboard' | 'recurring' | 'analytics'>('dashboard');
+  const [rollovers, setRollovers] = useState<Record<string, number>>({});
+  const [view, setView] = useState<'dashboard' | 'recurring' | 'analytics' | 'goals' | 'debts'>('dashboard');
   const [darkMode, setDarkMode] = useState(false);
   const [toast, setToast] = useState<{ message: string; undoId?: number } | null>(null);
 
@@ -83,34 +91,44 @@ export default function Dashboard() {
   const budgetChartData = useMemo(() => uniqueCategories.map(cat => {
     const spent = categoryExpenses[cat] || 0;
     const catBudgetObj = categoryBudgets.find(cb => cb.category === cat);
-    const budget = catBudgetObj?.amount || 0;
-    const exceeded = budget > 0 && spent > budget;
-    return { name: cat, Spent: spent, Budget: budget > 0 ? budget : null, exceeded };
-  }), [uniqueCategories, categoryExpenses, categoryBudgets]);
+    const baseBudget = catBudgetObj?.amount || 0;
+    const rollover = rollovers[cat] || 0;
+    const totalBudget = baseBudget > 0 ? Math.max(0, baseBudget + rollover) : 0;
+    const exceeded = totalBudget > 0 && spent > totalBudget;
+    return { name: cat, Spent: spent, Budget: totalBudget > 0 ? totalBudget : null, exceeded };
+  }), [uniqueCategories, categoryExpenses, categoryBudgets, rollovers]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [sumData, txData, budgetData, catBudgetsData] = await Promise.all([
+      const [sumData, txData, budgetData, catBudgetsData, rolloverData] = await Promise.all([
         fetchSummary(month, year),
         fetchTransactions(month, year),
         fetchBudget(month, year).catch(() => null),
         fetchCategoryBudgets(month, year).catch(() => []),
+        fetchRollover(month, year).catch(() => ({})),
       ]);
       setSummary(sumData);
       setTransactions(txData);
       setBudget(budgetData);
       setCategoryBudgets(catBudgetsData);
+      setRollovers(rolloverData);
     } catch (err) {
       console.error(err);
     }
     setLoading(false);
   }, [month, year]);
 
-  // Load dark mode from localStorage on mount
+  // Load dark mode from localStorage on mount and sync .dark class on <html>
   useEffect(() => {
     const savedDark = localStorage.getItem('budgetTrackerDark');
-    if (savedDark === 'true') setDarkMode(true);
+    const isDark = savedDark === 'true';
+    setDarkMode(isDark);
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   }, []);
 
   useEffect(() => {
@@ -135,6 +153,12 @@ export default function Dashboard() {
     const newDark = !darkMode;
     setDarkMode(newDark);
     localStorage.setItem('budgetTrackerDark', String(newDark));
+    // Sync .dark class on <html> so Tailwind dark: variant classes work
+    if (newDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   };
 
   const showToast = (message: string, undoId?: number) => {
@@ -189,20 +213,20 @@ export default function Dashboard() {
       <header className={`shadow-sm border-b ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
         <div className="max-w-5xl mx-auto px-4 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-6">
-            <h1 className={`text-2xl font-semibold tracking-tight ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
+            <h1 className={`text-2xl font-semibold tracking-tight whitespace-nowrap ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
               Budget Tracker
             </h1>
             <nav className={`flex items-center gap-2 p-1 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-              {(['dashboard', 'recurring', 'analytics'] as const).map(v => (
+              {[['dashboard', '🏠 Dashboard'], ['analytics', '📈 Analytics'], ['goals', '🎯 Savings Goals'], ['debts', '🤝 Debt Tracker'], ['recurring', '🔁 Recurring']].map(([v, label]) => (
                 <button
                   key={v}
-                  onClick={() => setView(v)}
+                  onClick={() => setView(v as any)}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all capitalize ${view === v
                     ? darkMode ? 'bg-gray-600 text-gray-100 shadow-sm' : 'bg-white text-gray-800 shadow-sm'
                     : darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-500 hover:text-gray-700'
                     }`}
                 >
-                  {v.charAt(0).toUpperCase() + v.slice(1)}
+                  {label}
                 </button>
               ))}
             </nav>
@@ -221,7 +245,7 @@ export default function Dashboard() {
             >
               ←
             </button>
-            <span className={`font-medium text-lg w-32 text-center ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
+            <span suppressHydrationWarning className={`font-medium text-lg w-32 text-center ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
               {date.toLocaleString('default', { month: 'long', year: 'numeric' })}
             </span>
             <button
@@ -233,10 +257,19 @@ export default function Dashboard() {
             <button
               onClick={() => setShowChart(true)}
               disabled={pieData.length === 0}
-              className="ml-4 flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg shadow-sm hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="ml-4 flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg shadow-sm hover:bg-indigo-700 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <span>📊</span> Show Chart
             </button>
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                className={`ml-2 flex items-center whitespace-nowrap gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${darkMode ? 'text-gray-400 hover:text-red-400 hover:bg-red-900/20' : 'text-gray-500 hover:text-red-600 hover:bg-red-50'}`}
+                title="Sign Out"
+              >
+                🚪 Sign Out
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -244,14 +277,28 @@ export default function Dashboard() {
       {/* Recurring View */}
       {view === 'recurring' && (
         <main className="max-w-5xl mx-auto px-4 py-8">
-          <Recurring />
+          <Recurring darkMode={darkMode} />
         </main>
       )}
 
       {/* Analytics View */}
       {view === 'analytics' && (
         <main className="max-w-5xl mx-auto px-4 py-8">
-          <Analytics />
+          <Analytics month={month} year={year} darkMode={darkMode} />
+        </main>
+      )}
+
+      {/* Goals View */}
+      {view === 'goals' && (
+        <main className="max-w-5xl mx-auto px-4 py-8 animate-in fade-in duration-300">
+          <SavingsGoals darkMode={darkMode} />
+        </main>
+      )}
+
+      {/* Debt Tracker View */}
+      {view === 'debts' && (
+        <main className="max-w-5xl mx-auto px-4 py-8 animate-in fade-in duration-300">
+          <DebtTracker darkMode={darkMode} />
         </main>
       )}
 
@@ -467,7 +514,12 @@ export default function Dashboard() {
           {/* Right Column: Category Budgets */}
           <div className="lg:col-span-4 h-full overflow-y-auto pb-8 pr-2">
             <div className={`p-5 rounded-2xl shadow-sm border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
-              <h3 className={`text-sm font-medium uppercase tracking-wider mb-5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Category Budgets</h3>
+              <div className="flex items-center gap-2 mb-5">
+                <h3 className={`text-sm font-medium uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Category Budgets</h3>
+                <span className={`px-2 py-0.5 text-[10px] uppercase font-bold rounded-full ${darkMode ? 'bg-indigo-900/50 text-indigo-300 border border-indigo-700/50' : 'bg-indigo-50 text-indigo-600 border border-indigo-100'}`} title="Unused budget or debt from previous months is automatically rolled over to the current month.">
+                  🔄 Rollover Active
+                </span>
+              </div>
               {uniqueCategories.length === 0 ? (
                 <p className="text-sm text-gray-400">No category expenses or budgets yet.</p>
               ) : (
@@ -475,7 +527,9 @@ export default function Dashboard() {
                   {uniqueCategories.map(cat => {
                     const spent = categoryExpenses[cat] || 0;
                     const catBudgetObj = categoryBudgets.find(cb => cb.category === cat);
-                    const catBudgetAmt = catBudgetObj?.amount || 0;
+                    const baseBudget = catBudgetObj?.amount || 0;
+                    const rollover = rollovers[cat] || 0;
+                    const catBudgetAmt = baseBudget > 0 ? Math.max(0, baseBudget + rollover) : 0;
                     const isExceeded = catBudgetAmt > 0 && spent > catBudgetAmt;
                     const percentage = catBudgetAmt > 0 ? Math.min(100, Math.round((spent / catBudgetAmt) * 100)) : 0;
                     const catTransactions = transactions.filter(t => t.category === cat && t.type === 'expense');
@@ -516,15 +570,24 @@ export default function Dashboard() {
                           ) : (
                             <div className="flex items-center gap-2">
                               <span className={isExceeded ? 'text-red-500 font-medium' : darkMode ? 'text-gray-300' : 'text-gray-600'}>
-                                ৳{spent} <span className="text-gray-400 font-normal">/ {catBudgetAmt > 0 ? `৳${catBudgetAmt}` : 'Not set'}</span>
+                                ৳{spent} <span className="text-gray-400 font-normal">/ {catBudgetAmt > 0 ? `৳${catBudgetAmt.toFixed(2)}` : 'Not set'}</span>
                               </span>
+                              {baseBudget > 0 && rollover !== 0 && (
+                                <span className={`text-[10px] px-2 py-0.5 rounded flex items-center gap-1.5 font-medium shadow-sm border ${darkMode ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-200' : 'border-indigo-200 bg-indigo-50 text-indigo-700'}`} title="Base Budget + Rollover">
+                                  <span>Base: ৳{baseBudget.toFixed(2)}</span>
+                                  <span className="opacity-50">|</span>
+                                  <span className="flex items-center gap-0.5">
+                                    🔄 Rollover: <span className={rollover > 0 ? (darkMode ? 'text-emerald-400 font-bold' : 'text-emerald-600 font-bold') : (darkMode ? 'text-red-400 font-bold' : 'text-red-600 font-bold')}>{rollover > 0 ? `+৳${rollover.toFixed(2)}` : `-৳${Math.abs(rollover).toFixed(2)}`}</span>
+                                  </span>
+                                </span>
+                              )}
                               {catBudgetAmt > 0 && (
                                 <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium whitespace-nowrap tracking-wide shadow-sm ${isExceeded ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}>
                                   {isExceeded ? `Exceeded by ৳${Number(spent - catBudgetAmt).toFixed(2)}` : `৳${Number(catBudgetAmt - spent).toFixed(2)} left`}
                                 </span>
                               )}
                               <button
-                                onClick={() => { setCatBudgetInput(catBudgetAmt > 0 ? catBudgetAmt.toString() : ''); setEditingCatBudget(cat); }}
+                                onClick={() => { setCatBudgetInput(baseBudget > 0 ? baseBudget.toString() : ''); setEditingCatBudget(cat); }}
                                 className="text-gray-400 hover:text-indigo-600 p-0.5 transition-colors"
                                 title="Edit category budget"
                               >
@@ -543,7 +606,7 @@ export default function Dashboard() {
                         )}
                         {/* List of transactions for this category */}
                         {catTransactions.length > 0 && (
-                          <div className="pt-2 pl-3 space-y-2 border-l-2 border-gray-200 dark:border-gray-600 ml-1">
+                          <div className={`pt-2 pl-3 space-y-2 border-l-2 ml-1 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
                             {catTransactions.map(tx => (
                               <div key={tx.id} className="flex justify-between items-center text-xs">
                                 <div className="flex flex-col">
@@ -579,7 +642,7 @@ export default function Dashboard() {
             {/* Header */}
             <div className={`flex justify-between items-center px-8 pt-7 pb-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
               <h2 className={`text-xl font-semibold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>Budget Analytics</h2>
-              <button onClick={() => setShowChart(false)} className="text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full w-8 h-8 flex items-center justify-center transition-colors text-lg">✕</button>
+              <button onClick={() => setShowChart(false)} className={`rounded-full w-8 h-8 flex items-center justify-center transition-colors text-lg text-gray-400 ${darkMode ? 'hover:bg-gray-700 hover:text-gray-200' : 'hover:bg-gray-100 hover:text-gray-700'}`}>✕</button>
             </div>
 
             {/* Tabs */}

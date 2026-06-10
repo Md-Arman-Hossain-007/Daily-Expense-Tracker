@@ -3,6 +3,10 @@
 import { useState } from 'react';
 import { createTransaction, updateTransaction, TransactionCreate, Transaction, updateCategoryBudget } from '@/lib/api';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const CURRENCIES = ['BDT', 'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'INR'];
+const RATES_TO_BDT: Record<string, number> = { BDT: 1, USD: 110, EUR: 120, GBP: 140, JPY: 0.74, CAD: 80, AUD: 72, INR: 1.32 };
+
 interface Props {
   onAdd: () => void;
   editTx?: Transaction | null;
@@ -23,20 +27,37 @@ export default function TransactionForm({ onAdd, editTx, onCancelEdit, categorie
   const [tags, setTags] = useState(editTx?.tags || '');
   const [date, setDate] = useState(editTx?.date || new Date().toISOString().split('T')[0]);
   const [categoryBudget, setCategoryBudget] = useState('');
+  const [currency, setCurrency] = useState((editTx as any)?.currency || 'BDT');
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptUrl, setReceiptUrl] = useState((editTx as any)?.receipt_url || '');
+  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
+      let finalReceiptUrl = receiptUrl;
+      if (receiptFile) {
+        setUploading(true);
+        const fd = new FormData();
+        fd.append('file', receiptFile);
+        const up = await fetch(`${API_BASE}/upload/`, { method: 'POST', body: fd });
+        const upData = await up.json();
+        finalReceiptUrl = upData.url;
+        setUploading(false);
+      }
+      const bdt = parseFloat(amount) * (RATES_TO_BDT[currency] || 1);
       const data: TransactionCreate = {
         type,
-        amount: parseFloat(amount),
+        amount: bdt,
         category,
         description,
         date,
         tags,
-      };
+        currency,
+        receipt_url: finalReceiptUrl || undefined,
+      } as any;
       if (editTx) {
         await updateTransaction(editTx.id, data);
       } else {
@@ -129,9 +150,25 @@ export default function TransactionForm({ onAdd, editTx, onCancelEdit, categorie
         )}
 
         <div>
-          <label className={labelClasses}>Amount</label>
+          <label className={labelClasses}>Currency</label>
+          <select
+            className={inputClasses}
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+          >
+            {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          {currency !== 'BDT' && amount && (
+            <p className={`text-xs mt-1 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>
+              ≈ ৳{(parseFloat(amount) * (RATES_TO_BDT[currency] || 1)).toFixed(2)} BDT
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label className={labelClasses}>Amount ({currency})</label>
           <div className="relative">
-            <span className={`absolute left-3 top-1/2 -translate-y-1/2 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>৳</span>
+            <span className={`absolute left-3 top-1/2 -translate-y-1/2 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>{currency === 'BDT' ? '৳' : currency[0]}</span>
             <input
               type="number"
               step="0.01"
@@ -181,12 +218,25 @@ export default function TransactionForm({ onAdd, editTx, onCancelEdit, categorie
           />
         </div>
 
+        <div>
+          <label className={labelClasses}>Receipt / Attachment <span className={`font-normal ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>(Optional)</span></label>
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            className={`w-full text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'} file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium ${darkMode ? 'file:bg-gray-700 file:text-gray-200' : 'file:bg-gray-100 file:text-gray-700'} hover:file:opacity-80`}
+            onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+          />
+          {receiptUrl && !receiptFile && (
+            <a href={`${API_BASE}${receiptUrl}`} target="_blank" rel="noopener noreferrer" className="text-xs mt-1 text-indigo-500 underline block">View current receipt</a>
+          )}
+        </div>
+
         <button
           type="submit"
           disabled={loading}
           className={`w-full py-3 px-4 rounded-lg font-medium transition-all disabled:opacity-50 focus:ring-4 ${darkMode ? 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-900/50' : 'bg-gray-900 text-white hover:bg-gray-800 focus:ring-gray-200'}`}
         >
-          {loading ? (editTx ? 'Saving...' : 'Adding...') : (editTx ? 'Save Changes' : 'Add Transaction')}
+          {uploading ? 'Uploading receipt...' : loading ? (editTx ? 'Saving...' : 'Adding...') : (editTx ? 'Save Changes' : 'Add Transaction')}
         </button>
       </form>
     </div>

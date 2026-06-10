@@ -3,7 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchRecurring, createRecurring, deleteRecurring, applyRecurring, RecurringTransaction, RecurringTransactionCreate } from '@/lib/api';
 
-export default function Recurring() {
+interface RecurringProps {
+  darkMode?: boolean;
+}
+
+export default function Recurring({ darkMode = false }: RecurringProps) {
   const [recurring, setRecurring] = useState<RecurringTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -75,20 +79,28 @@ export default function Recurring() {
     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
       {/* Form */}
       <div className="md:col-span-1">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 sticky top-6">
-          <h2 className="text-lg font-medium text-gray-800 mb-6">Add Recurring</h2>
+        <div className={`p-6 rounded-2xl shadow-sm border sticky top-6 transition-colors ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+          <h2 className={`text-lg font-medium mb-6 ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>Add Recurring</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex p-1 bg-gray-50 rounded-lg">
+            <div className={`flex p-1 rounded-lg ${darkMode ? 'bg-gray-900/50' : 'bg-gray-50'}`}>
               <button
                 type="button"
-                className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${type === 'expense' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
+                  type === 'expense' 
+                    ? darkMode ? 'bg-gray-700 shadow-sm text-gray-100' : 'bg-white shadow-sm text-gray-800'
+                    : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
+                }`}
                 onClick={() => setType('expense')}
               >
                 Expense
               </button>
               <button
                 type="button"
-                className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${type === 'income' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
+                  type === 'income' 
+                    ? darkMode ? 'bg-gray-700 shadow-sm text-gray-100' : 'bg-white shadow-sm text-gray-800'
+                    : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
+                }`}
                 onClick={() => setType('income')}
               >
                 Income
@@ -96,7 +108,7 @@ export default function Recurring() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Amount</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">৳</span>
                 <input
@@ -104,7 +116,9 @@ export default function Recurring() {
                   step="0.01"
                   required
                   min="0.01"
-                  className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                  className={`w-full pl-8 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all ${
+                    darkMode ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-500' : 'bg-white border-gray-200 text-gray-800 placeholder-gray-400'
+                  }`}
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
@@ -113,11 +127,13 @@ export default function Recurring() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Category</label>
               <input
                 type="text"
                 required
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all ${
+                  darkMode ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-500' : 'bg-white border-gray-200 text-gray-800 placeholder-gray-400'
+                }`}
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 placeholder="e.g. Rent, Salary"
@@ -125,9 +141,11 @@ export default function Recurring() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Frequency</label>
+              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Frequency</label>
               <select
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all bg-white"
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all ${
+                  darkMode ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-200 text-gray-800'
+                }`}
                 value={frequency}
                 onChange={(e) => setFrequency(e.target.value as 'daily' | 'weekly' | 'monthly' | 'yearly')}
               >
@@ -139,21 +157,25 @@ export default function Recurring() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Next Date</label>
+              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Next Date</label>
               <input
                 type="date"
                 required
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all ${
+                  darkMode ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-200 text-gray-800'
+                }`}
                 value={nextDate}
                 onChange={(e) => setNextDate(e.target.value)}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description <span className="text-gray-400 font-normal">(Optional)</span></label>
+              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Description <span className={`font-normal ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>(Optional)</span></label>
               <input
                 type="text"
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all ${
+                  darkMode ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-500' : 'bg-white border-gray-200 text-gray-800 placeholder-gray-400'
+                }`}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
@@ -162,7 +184,9 @@ export default function Recurring() {
             <button
               type="submit"
               disabled={saving}
-              className="w-full py-3 px-4 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 focus:ring-4 focus:ring-gray-200 transition-all disabled:opacity-50"
+              className={`w-full py-3 px-4 rounded-lg font-medium transition-all disabled:opacity-50 shadow-md ${
+                darkMode ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'
+              }`}
             >
               {saving ? 'Adding...' : 'Add Recurring'}
             </button>
@@ -172,42 +196,46 @@ export default function Recurring() {
 
       {/* List */}
       <div className="md:col-span-2">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-6 py-5 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
-            <h2 className="text-lg font-medium text-gray-800">Recurring Transactions</h2>
+        <div className={`rounded-2xl shadow-sm border overflow-hidden transition-colors ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+          <div className={`px-6 py-5 border-b flex justify-between items-center ${darkMode ? 'border-gray-700 bg-gray-800/80' : 'border-gray-50 bg-gray-50/50'}`}>
+            <h2 className={`text-lg font-medium ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>Recurring Transactions</h2>
             <button
               onClick={handleApply}
-              className="px-4 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors rounded-lg text-sm font-medium"
+              className={`px-4 py-2 transition-colors rounded-lg text-sm font-medium ${darkMode ? 'bg-indigo-900/40 text-indigo-300 hover:bg-indigo-900/60' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}
             >
               🔄 Apply Pending
             </button>
           </div>
           {loading ? (
-            <div className="p-8 text-center text-gray-400">Loading...</div>
+            <div className={`p-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>Loading...</div>
           ) : recurring.length === 0 ? (
-            <div className="p-8 text-center text-gray-400">No recurring transactions set up.</div>
+            <div className={`p-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>No recurring transactions set up.</div>
           ) : (
-            <ul className="divide-y divide-gray-50">
+            <ul className={`divide-y ${darkMode ? 'divide-gray-700/50' : 'divide-gray-50'}`}>
               {recurring.map(tx => (
-                <li key={tx.id} className="p-6 flex items-center justify-between hover:bg-gray-50/50 transition-colors group">
+                <li key={tx.id} className={`p-6 flex items-center justify-between transition-colors group ${darkMode ? 'hover:bg-gray-700/30' : 'hover:bg-gray-50/50'}`}>
                   <div className="flex items-center space-x-4">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm ${tx.type === 'income' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm ${
+                      tx.type === 'income' 
+                        ? darkMode ? 'bg-green-900/20 text-green-400' : 'bg-green-50 text-green-600'
+                        : darkMode ? 'bg-red-900/20 text-red-400' : 'bg-red-50 text-red-500'
+                    }`}>
                       {tx.type === 'income' ? '+' : '-'}
                     </div>
                     <div>
-                      <p className="font-medium text-gray-800">{tx.category}</p>
-                      <p className="text-sm text-gray-400">
+                      <p className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{tx.category}</p>
+                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>
                         {tx.frequency.charAt(0).toUpperCase() + tx.frequency.slice(1)} • Next: {tx.next_date}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center space-x-4">
-                    <span className={`font-semibold ${tx.type === 'income' ? 'text-green-600' : 'text-gray-800'}`}>
+                    <span className={`font-semibold ${tx.type === 'income' ? (darkMode ? 'text-green-400' : 'text-green-600') : (darkMode ? 'text-gray-100' : 'text-gray-800')}`}>
                       ৳{Number(tx.amount).toFixed(2)}
                     </span>
                     <button
                       onClick={() => handleDelete(tx.id)}
-                      className="text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all p-2 rounded-md"
+                      className={`transition-all p-2 rounded-md ${darkMode ? 'text-gray-500 hover:text-red-400 hover:bg-red-900/20' : 'text-gray-500 hover:text-red-600 hover:bg-red-50'}`}
                       title="Delete"
                     >
                       ✕

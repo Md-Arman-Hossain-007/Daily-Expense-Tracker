@@ -1,0 +1,16 @@
+{
+  "name": "daily-budget-tracker-sdk",
+  "version": "1.0.0",
+  "description": "Mobile App SDK for Daily Budget Tracker",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "axios": "^1.6.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.2"
+  }
+}

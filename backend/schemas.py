@@ -9,8 +9,10 @@ class TransactionBase(BaseModel):
     category: str
     description: Optional[str] = None
     date: date
+    status: str = Field(default='pending', pattern="^(pending|done)$")
     tags: Optional[str] = None
-    status: Optional[str] = None  # 'pending' or 'done'; defaults set in API
+    currency: str = "BDT"
+    receipt_url: Optional[str] = None
 
 class TransactionCreate(TransactionBase):
     pass
@@ -73,3 +75,58 @@ class RecurringTransaction(RecurringTransactionBase):
     id: int
     class Config:
         from_attributes = True
+
+# --- Savings Goals ---
+class SavingsGoalCreate(BaseModel):
+    name: str
+    target_amount: Decimal = Field(..., gt=0)
+    current_amount: Optional[Decimal] = Decimal('0.00')
+    deadline: Optional[date] = None
+    color: Optional[str] = '#6366F1'
+    notes: Optional[str] = None
+
+class SavingsGoalContribute(BaseModel):
+    amount: Decimal = Field(..., gt=0)
+
+class SavingsGoal(BaseModel):
+    id: int
+    name: str
+    target_amount: Decimal
+    current_amount: Decimal
+    deadline: Optional[date] = None
+    color: str
+    notes: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+# --- Debts ---
+class DebtBase(BaseModel):
+    person: str
+    amount: Decimal = Field(..., gt=0)
+    type: str = Field(..., pattern="^(lent|borrowed)$")
+    description: Optional[str] = None
+
+class DebtCreate(DebtBase):
+    pass
+
+class Debt(DebtBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+# --- Auth ---
+from pydantic import EmailStr
+
+class UserRegister(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=6)
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    email: str
